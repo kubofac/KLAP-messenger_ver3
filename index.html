@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <title>KLAP_messenger (WiFi-BLE)</title>
+    <link rel="manifest" href="/manifest.json">
+    <style>
+        /* 画面全体の設定 */
+        html, body {
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            min-height: 100vh;
+            background-color: #000000;
+            color: #ffffff;
+            padding: 0;
+            position: relative;
+        }
+
+        /* 画面中央に配置するメッセージのコンテナ */
+        #content-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            flex-grow: 1;
+            width: 100%;
+            padding: 10px 0;
+            box-sizing: border-box;
+            /* デバッグオーバーレイの下に配置 */
+            padding-top: 50px; 
+        }
+        
+        /* ピットメッセージの表示 */
+        #pitMessageDisplay {
+            width: 95%;
+            font-size: 15vh;
+            font-weight: bold;
+            color: #ffeb3b;
+            background: #000000;
+            border: none;
+            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: clip;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+            margin: 0;
+            padding: 0;
+            flex-shrink: 0;
+        }
+
+        /* ボタン行（画面下段に固定） */
+        #buttons-row {
+            display: flex;
+            justify-content: center;
+            width: 100%;
+            gap: 20px;
+            padding: 10px 20px;
+            flex-shrink: 0;
+            margin-top: auto;
+            box-sizing: border-box;
+        }
+        
+        .button {
+            border: 1px solid #3a3a3c;
+            background-color: #2c2c2e;
+            padding: 18px 30px;
+            color: #ffffff;
+            font-size: 20px;
+            font-weight: 500;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            text-align: center;
+            flex-grow: 1;
+            max-width: 300px;
+        }
+        
+        .button:hover { background-color: #4a4a4e; }
+
+        .ble-disconnected { background-color: #ff4d4d !important; border-color: #993333;}
+        .ble-connected { background-color: #007aff !important; border-color: #0066cc;}
+
+        /* デバッグオーバーレイ（上部に固定） */
+        #debug-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: #999999;
+            padding: 5px 10px;
+            font-size: 14px;
+            line-height: 1.5;
+            box-sizing: border-box;
+            z-index: 5;
+            flex-shrink: 0;
+        }
+        .status-text { text-align: left; margin: 0; }
+        .status-good { color: #00ff00; } 
+        .status-bad { color: #ff4d4d; }
+
+        /* フォントサイズ調整 (特に縦向きや非常に小さな画面用) */
+        @media (max-height: 400px) and (orientation: landscape) {
+            #pitMessageDisplay {
+                font-size: 12vh;
+            }
+        }
+    </style>
+</head>
+
+<body>
+<div id="debug-overlay">
+    <p id="data-status-display" class="status-text">データ接続: 待機中</p>
+    <p id="send-status-display" class="status-text">送信結果: 待機中</p>
+</div>
+
+<div id="content-wrapper">
+    <div id="pitMessageDisplay">メッセージを待っています...</div>
+</div>
+
+<div id="buttons-row">
+    <button id="bleConnectButton" class="button ble-disconnected">全BLEサービスに接続</button>
+</div>
+
+<script>
+'use strict';
+
+// =========================================================
+// 1. UUID 定義とDOM要素
+// =========================================================
+
+// ★★★ 受信側ESP32-C3 Mini (データ受信) のUUIDとデバイス名 ★★★
+const DATA_SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+const DATA_CHAR_UUID = 'beb5483e-36e1-45f1-b40b-361734a96b3a';
+const DATA_RECEIVER_DEVICE_NAME = 'ESP32_Receiver_B_Data';
+
+// ★★★ 送信側ESP32 (ステータス通知) のUUIDとデバイス名 ★★★
+const STATUS_SERVICE_UUID = '5fafc201-1fb5-459e-8fcc-c5c9c331914b';
+const STATUS_CHAR_UUID = 'cfb5483e-36e1-45f1-b40b-361734a96b3a';
+const STATUS_SENDER_DEVICE_NAME = 'ESP32_Sender_A_Status';
+
+// BLE接続変数
+let dataCharacteristic;
+let statusCharacteristic;
+
+// DOM要素キャッシュ
+const elem = {
+    dataStatusDisplay: null,    
+    sendStatusDisplay: null,    
+    bleConnectButton: null,
+    pitMessageDisplay: null
+};
+
+// ----------------------------------------------------
+// 2. BLE通信関数 (2つのサービスに接続)
+// ----------------------------------------------------
+
+/**
+ * [メイン接続] 全てのBLEサービスへの接続を開始
+ */
+function connectAllServices() {
+    elem.bleConnectButton.textContent = '接続中...';
+    // データ受信サービス (ESP32-C3) への接続
+    connectToDataService();
+    // ステータス通知サービス (ESP32送信機) への接続
+    connectToStatusService();
+}
+
+/**
+ * [データ受信] 受信側ESP32-C3 Miniからのデータサービスに接続
+ */
+async function connectToDataService() {
+    try {
+        const device = await navigator.bluetooth.requestDevice({
+            filters: [{ name: DATA_RECEIVER_DEVICE_NAME }],
+            optionalServices: [DATA_SERVICE_UUID]
+        });
+        
+        device.addEventListener('gattserverdisconnected', onDataDeviceDisconnected);
+        updateStatusDisplay(elem.dataStatusDisplay, `データ接続試行中... (${device.name})`);
+
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService(DATA_SERVICE_UUID);
+        dataCharacteristic = await service.getCharacteristic(DATA_CHAR_UUID);
+        
+        await dataCharacteristic.startNotifications();
+        dataCharacteristic.addEventListener('characteristicvaluechanged', handleDataUpdate);
+
+        updateStatusDisplay(elem.dataStatusDisplay, 'データ接続: OK. メッセージ監視中。', 'status-good');
+        updateButtonStatus(true);
+
+    } catch (error) {
+        console.error('BLE Data Connection Error:', error);
+        updateStatusDisplay(elem.dataStatusDisplay, `データ接続エラー: ${error.message}`, 'status-bad');
+        updateButtonStatus(false);
+    }
+}
+
+/**
+ * [ステータス通知] 送信側ESP32からのステータスサービスに接続
+ */
+async function connectToStatusService() {
+    try {
+        const device = await navigator.bluetooth.requestDevice({
+            filters: [{ name: STATUS_SENDER_DEVICE_NAME }],
+            optionalServices: [STATUS_SERVICE_UUID]
+        });
+
+        device.addEventListener('gattserverdisconnected', onStatusDeviceDisconnected);
+        updateStatusDisplay(elem.sendStatusDisplay, `送信結果接続試行中... (${device.name})`);
+
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService(STATUS_SERVICE_UUID);
+        statusCharacteristic = await service.getCharacteristic(STATUS_CHAR_UUID);
+        
+        await statusCharacteristic.startNotifications();
+        statusCharacteristic.addEventListener('characteristicvaluechanged', handleStatusUpdate);
+
+        updateStatusDisplay(elem.sendStatusDisplay, '送信結果接続: OK. 監視中。', 'status-good');
+        updateButtonStatus(true);
+
+    } catch (error) {
+        console.error('BLE Status Connection Error:', error);
+        updateStatusDisplay(elem.sendStatusDisplay, `送信結果接続エラー: ${error.message}`, 'status-bad');
+        updateButtonStatus(false);
+    }
+}
+
+// ----------------------------------------------------
+// 3. データ処理とイベントハンドラ
+// ----------------------------------------------------
+
+/**
+ * [データ受信] 受信側(B)からデータを受信したときの処理
+ */
+function handleDataUpdate(event) {
+    const value = event.target.value;
+    const decoder = new TextDecoder('utf-8');
+    const receivedString = decoder.decode(value).trim();
+    
+    console.log(`[DATA] Received: ${receivedString}`);
+
+    if (elem.pitMessageDisplay) {
+        // メッセージクリアの判定
+        if (receivedString === '' || receivedString.toLowerCase() === 'なし' || receivedString.toLowerCase() === 'clear') {
+            elem.pitMessageDisplay.textContent = 'メッセージを待っています...';
+        } else {
+            elem.pitMessageDisplay.textContent = receivedString;
+        }
+    }
+}
+
+/**
+ * [ステータス通知] 送信側(A)からステータスを受信したときの処理
+ */
+function handleStatusUpdate(event) {
+    const value = event.target.value;
+    const statusText = new TextDecoder('utf-8').decode(value.buffer).trim();
+    
+    console.log('Received ESP-NOW Status:', statusText);
+    
+    let colorClass = 'status-text';
+    if (statusText.includes('成功')) {
+        colorClass = 'status-good';
+    } else if (statusText.includes('失敗') || statusText.includes('圏外')) {
+        colorClass = 'status-bad';
+    }
+    
+    updateStatusDisplay(elem.sendStatusDisplay, `送信結果: ${statusText}`, colorClass);
+}
+
+
+/**
+ * データデバイスが切断されたときの処理
+ */
+function onDataDeviceDisconnected(event) {
+    console.warn('データBLEデバイスが切断されました:', event.target.name);
+    updateStatusDisplay(elem.dataStatusDisplay, 'データ接続: 切断されました。', 'status-bad');
+    elem.pitMessageDisplay.textContent = '接続が切れました。再接続してください。';
+    elem.pitMessageDisplay.style.color = '#ff4d4d'; 
+    updateButtonStatus(false);
+}
+
+/**
+ * ステータスデバイスが切断されたときの処理
+ */
+function onStatusDeviceDisconnected(event) {
+    console.warn('ステータスBLEデバイスが切断されました:', event.target.name);
+    updateStatusDisplay(elem.sendStatusDisplay, '送信結果接続: 切断されました。', 'status-bad');
+    updateButtonStatus(false);
+}
+
+
+// ----------------------------------------------------
+// 4. ユーティリティと初期化
+// ----------------------------------------------------
+
+/**
+ * 画面上のステータス表示エリアを更新する
+ */
+function updateStatusDisplay(element, text, className = 'status-text') {
+    if (element) {
+        element.textContent = text;
+        element.className = 'status-text ' + className;
+    }
+}
+
+/**
+ * 接続ボタンの状態を更新する
+ */
+function updateButtonStatus(isConnected) {
+    // どちらかのサービスが接続されていれば、ボタンの表示は一旦CONNECTEDとする
+    // 厳密には両方接続されたらCONNECTEDとすべきだが、ここでは接続試行の結果に依存
+    if (isConnected) {
+        elem.bleConnectButton.textContent = 'BLE 接続済み';
+        elem.bleConnectButton.classList.remove('ble-disconnected');
+        elem.bleConnectButton.classList.add('ble-connected');
+    } else {
+        elem.bleConnectButton.textContent = '全BLEサービスに接続';
+        elem.bleConnectButton.classList.remove('ble-connected');
+        elem.bleConnectButton.classList.add('ble-disconnected');
+    }
+}
+
+
+window.addEventListener('load', () => {
+    // Service Workerの登録（PWAとして動作させる場合）
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/service-worker.js')
+            .then(registration => {
+                console.log('Service Worker registered with scope:', registration.scope);
+            })
+            .catch(error => {
+                console.log('Service Worker registration failed:', error);
+            });
+    }
+
+    // DOM要素の取得
+    elem.dataStatusDisplay = document.getElementById('data-status-display');
+    elem.sendStatusDisplay = document.getElementById('send-status-display');
+    elem.bleConnectButton = document.getElementById('bleConnectButton');
+    elem.pitMessageDisplay = document.getElementById('pitMessageDisplay');
+
+    // イベントリスナーの設定
+    if (elem.bleConnectButton) elem.bleConnectButton.addEventListener('click', connectAllServices);
+    
+    // 初期表示メッセージの文字色を黄色に固定
+    if (elem.pitMessageDisplay) elem.pitMessageDisplay.style.color = '#ffeb3b';
+
+    // 初期ステータス表示
+    updateStatusDisplay(elem.dataStatusDisplay, 'データ接続: 待機中');
+    updateStatusDisplay(elem.sendStatusDisplay, '送信結果: 待機中');
+});
+</script>
+</body>
+</html>

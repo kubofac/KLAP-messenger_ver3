@@ -1,0 +1,22 @@
+{
+  "name": "KLAP_messenger_ver3",
+  "short_name": "KLAP_messenger_ver3",
+  "description": "BLEとwifi利用したメッセージ受信アプリ。",
+  "start_url": "/index.html",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#ffffff",
+  "theme_color": "#2196F3",
+  "icons": [
+    {
+      "src": "/icon192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
