@@ -185,8 +185,9 @@ function connectAllServices() {
  */
 async function connectToDataService() {
     try {
+        // ✅ 修正: デバイス名フィルタを削除し、サービスUUIDフィルタのみに変更
         const device = await navigator.bluetooth.requestDevice({
-            filters: [{ name: DATA_RECEIVER_DEVICE_NAME }],
+            filters: [{ services: [DATA_SERVICE_UUID] }], // UUIDフィルタのみ
             optionalServices: [DATA_SERVICE_UUID]
         });
         
@@ -215,8 +216,9 @@ async function connectToDataService() {
  */
 async function connectToStatusService() {
     try {
+        // ✅ 修正: デバイス名フィルタを削除し、サービスUUIDフィルタのみに変更
         const device = await navigator.bluetooth.requestDevice({
-            filters: [{ name: STATUS_SENDER_DEVICE_NAME }],
+            filters: [{ services: [STATUS_SERVICE_UUID] }], // UUIDフィルタのみ
             optionalServices: [STATUS_SERVICE_UUID]
         });
 
