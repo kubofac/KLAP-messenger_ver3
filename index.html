@@ -6,7 +6,7 @@
     <title>KLAP_messenger (WiFi-BLE)</title>
     <link rel="manifest" href="/manifest.json">
     <style>
-        /* 画面全体の設定 */
+        /* 画面全体の設定 (スタイルシートは省略せずに含めます) */
         html, body {
             height: 100%;
             margin: 0;
@@ -172,22 +172,20 @@ const elem = {
 /**
  * [メイン接続] 全てのBLEサービスへの接続を、順番に開始 (async/awaitで制御)
  */
-// 🚨 修正: asyncを追加し、awaitで接続を順番に実行する
-async function connectAllServices() { 
+async function connectAllServices() { // 🚨 修正: asyncを追加
     elem.bleConnectButton.textContent = '接続中...';
     
     try {
         // 1. データ受信サービス (ESP32-C3) への接続を完了させる
-        await connectToDataService(); 
+        await connectToDataService(); // 🚨 修正: awaitで完了を待つ
         
         // 2. データ接続が成功したら、ステータス通知サービス (ESP32送信機) への接続を開始
-        await connectToStatusService(); 
+        await connectToStatusService(); // 🚨 修正: awaitで完了を待つ
         
         elem.bleConnectButton.textContent = 'BLE 接続済み'; 
 
     } catch (e) {
         console.error("Critical Connection Error in connectAllServices:", e);
-        // User cancelled the requestDevice() chooser. の場合はエラーメッセージが適切でないため上書き
         if (e.message.includes('User cancelled')) {
              updateStatusDisplay(elem.dataStatusDisplay, '接続をキャンセルしました。', 'status-bad');
         } else {
@@ -223,7 +221,6 @@ async function connectToDataService() {
 
     } catch (error) {
         console.error('BLE Data Connection Error:', error);
-        // エラーが発生したら、後続の接続を中断させるため、例外を再スロー
         throw error; 
     }
 }
@@ -254,7 +251,6 @@ async function connectToStatusService() {
 
     } catch (error) {
         console.error('BLE Status Connection Error:', error);
-        // エラーが発生したら、例外を再スロー
         throw error;
     }
 }
@@ -263,9 +259,6 @@ async function connectToStatusService() {
 // 3. データ処理とイベントハンドラ
 // ----------------------------------------------------
 
-/**
- * [データ受信] 受信側(B)からデータを受信したときの処理
- */
 function handleDataUpdate(event) {
     const value = event.target.value;
     const decoder = new TextDecoder('utf-8');
@@ -274,7 +267,6 @@ function handleDataUpdate(event) {
     console.log(`[DATA] Received: ${receivedString}`);
 
     if (elem.pitMessageDisplay) {
-        // メッセージクリアの判定
         if (receivedString === '' || receivedString.toLowerCase() === 'なし' || receivedString.toLowerCase() === 'clear') {
             elem.pitMessageDisplay.textContent = 'メッセージを待っています...';
         } else {
@@ -283,9 +275,6 @@ function handleDataUpdate(event) {
     }
 }
 
-/**
- * [ステータス通知] 送信側(A)からステータスを受信したときの処理
- */
 function handleStatusUpdate(event) {
     const value = event.target.value;
     const statusText = new TextDecoder('utf-8').decode(value.buffer).trim();
@@ -303,9 +292,6 @@ function handleStatusUpdate(event) {
 }
 
 
-/**
- * データデバイスが切断されたときの処理
- */
 function onDataDeviceDisconnected(event) {
     console.warn('データBLEデバイスが切断されました:', event.target.name);
     updateStatusDisplay(elem.dataStatusDisplay, 'データ接続: 切断されました。', 'status-bad');
@@ -314,9 +300,6 @@ function onDataDeviceDisconnected(event) {
     updateButtonStatus(false);
 }
 
-/**
- * ステータスデバイスが切断されたときの処理
- */
 function onStatusDeviceDisconnected(event) {
     console.warn('ステータスBLEデバイスが切断されました:', event.target.name);
     updateStatusDisplay(elem.sendStatusDisplay, '送信結果接続: 切断されました。', 'status-bad');
@@ -328,9 +311,6 @@ function onStatusDeviceDisconnected(event) {
 // 4. ユーティリティと初期化
 // ----------------------------------------------------
 
-/**
- * 画面上のステータス表示エリアを更新する
- */
 function updateStatusDisplay(element, text, className = 'status-text') {
     if (element) {
         element.textContent = text;
@@ -338,11 +318,7 @@ function updateStatusDisplay(element, text, className = 'status-text') {
     }
 }
 
-/**
- * 接続ボタンの状態を更新する
- */
 function updateButtonStatus(isConnected) {
-    // どちらかのサービスが接続されていれば、ボタンの表示は一旦CONNECTEDとする
     if (isConnected) {
         elem.bleConnectButton.textContent = 'BLE 接続済み';
         elem.bleConnectButton.classList.remove('ble-disconnected');
