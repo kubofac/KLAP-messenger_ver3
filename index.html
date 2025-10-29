@@ -74,7 +74,7 @@
             background-color: #2c2c2e;
             padding: 18px 30px;
             color: #ffffff;
-            font-size: 20px;
+            font-size: 16px; /* ボタンが2つになったためフォントサイズを調整 */
             font-weight: 500;
             border-radius: 5px;
             cursor: pointer;
@@ -126,7 +126,8 @@
 </div>
 
 <div id="buttons-row">
-    <button id="bleConnectButton" class="button ble-disconnected">全BLEサービスに接続</button>
+    <button id="connectDataButton" class="button ble-disconnected">1. データ受信サービスに接続</button>
+    <button id="connectStatusButton" class="button ble-disconnected">2. 送信結果サービスに接続</button>
 </div>
 
 <script>
@@ -136,15 +137,13 @@
 // 1. UUID 定義とDOM要素
 // =========================================================
 
-// ★★★ 受信側ESP32-C3 Mini (データ受信) のUUIDとデバイス名 ★★★
+// ★★★ 受信側ESP32-C3 Mini (データ受信) のUUID ★★★
 const DATA_SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
 const DATA_CHAR_UUID = 'beb5483e-36e1-45f1-b40b-361734a96b3a';
-const DATA_RECEIVER_DEVICE_NAME = 'ESP32_Receiver_B_Data';
 
-// ★★★ 送信側ESP32 (ステータス通知) のUUIDとデバイス名 ★★★
+// ★★★ 送信側ESP32 (ステータス通知) のUUID ★★★
 const STATUS_SERVICE_UUID = '5fafc201-1fb5-459e-8fcc-c5c9c331914b';
 const STATUS_CHAR_UUID = 'cfb5483e-36e1-45f1-b40b-361734a96b3a';
-const STATUS_SENDER_DEVICE_NAME = 'ESP32_Sender_A_Status';
 
 // BLE接続変数
 let dataCharacteristic;
@@ -154,43 +153,22 @@ let statusCharacteristic;
 const elem = {
     dataStatusDisplay: null,    
     sendStatusDisplay: null,    
-    bleConnectButton: null,
+    connectDataButton: null, // 🚨 修正
+    connectStatusButton: null, // 🚨 修正
     pitMessageDisplay: null
 };
 
 // ----------------------------------------------------
-// 2. BLE通信関数 (2つのサービスに接続)
+// 2. BLE通信関数 (async/awaitでの順番制御は、ユーザー操作に置き換える)
 // ----------------------------------------------------
-
-/**
- * [メイン接続] 全てのBLEサービスへの接続を、順番に開始 (async/awaitで制御)
- */
-async function connectAllServices() { 
-    elem.bleConnectButton.textContent = '接続中...';
-    
-    try {
-        await connectToDataService(); 
-        await connectToStatusService(); 
-        
-        elem.bleConnectButton.textContent = 'BLE 接続済み'; 
-
-    } catch (e) {
-        console.error("Critical Connection Error in connectAllServices:", e);
-        if (e.message.includes('User cancelled')) {
-             updateStatusDisplay(elem.dataStatusDisplay, '接続をキャンセルしました。', 'status-bad');
-        } else {
-             elem.bleConnectButton.textContent = '接続エラーが発生';
-        }
-        updateButtonStatus(false);
-    }
-}
 
 /**
  * [データ受信] 受信側ESP32-C3 Miniからのデータサービスに接続
  */
 async function connectToDataService() {
+    elem.connectDataButton.textContent = '接続中...';
     try {
-        // 🚨 修正: サービスUUIDのみでフィルタリング
+        // 🚨 サービスUUIDのみでフィルタリング
         const device = await navigator.bluetooth.requestDevice({
             filters: [{ services: [DATA_SERVICE_UUID] }],
             optionalServices: [DATA_SERVICE_UUID]
@@ -207,11 +185,14 @@ async function connectToDataService() {
         dataCharacteristic.addEventListener('characteristicvaluechanged', handleDataUpdate);
 
         updateStatusDisplay(elem.dataStatusDisplay, 'データ接続: OK. メッセージ監視中。', 'status-good');
-        updateButtonStatus(true);
+        elem.connectDataButton.textContent = '✅ データ接続済み';
+        elem.connectDataButton.classList.remove('ble-disconnected');
+        elem.connectDataButton.classList.add('ble-connected');
 
     } catch (error) {
         console.error('BLE Data Connection Error:', error);
-        throw error; 
+        elem.connectDataButton.textContent = '❌ データ接続失敗';
+        updateStatusDisplay(elem.dataStatusDisplay, 'データ接続: 失敗', 'status-bad');
     }
 }
 
@@ -219,8 +200,9 @@ async function connectToDataService() {
  * [ステータス通知] 送信側ESP32からのステータスサービスに接続
  */
 async function connectToStatusService() {
+    elem.connectStatusButton.textContent = '接続中...';
     try {
-        // 🚨 修正: サービスUUIDのみでフィルタリング
+        // 🚨 サービスUUIDのみでフィルタリング
         const device = await navigator.bluetooth.requestDevice({
             filters: [{ services: [STATUS_SERVICE_UUID] }],
             optionalServices: [STATUS_SERVICE_UUID]
@@ -237,16 +219,19 @@ async function connectToStatusService() {
         statusCharacteristic.addEventListener('characteristicvaluechanged', handleStatusUpdate);
 
         updateStatusDisplay(elem.sendStatusDisplay, '送信結果接続: OK. 監視中。', 'status-good');
-        updateButtonStatus(true);
+        elem.connectStatusButton.textContent = '✅ 結果接続済み';
+        elem.connectStatusButton.classList.remove('ble-disconnected');
+        elem.connectStatusButton.classList.add('ble-connected');
 
     } catch (error) {
         console.error('BLE Status Connection Error:', error);
-        throw error;
+        elem.connectStatusButton.textContent = '❌ 結果接続失敗';
+        updateStatusDisplay(elem.sendStatusDisplay, '送信結果接続: 失敗', 'status-bad');
     }
 }
 
 // ----------------------------------------------------
-// 3. データ処理とイベントハンドラ (省略 - 変更なし)
+// 3. データ処理とイベントハンドラ (変更なし)
 // ----------------------------------------------------
 
 function handleDataUpdate(event) {
@@ -287,18 +272,24 @@ function onDataDeviceDisconnected(event) {
     updateStatusDisplay(elem.dataStatusDisplay, 'データ接続: 切断されました。', 'status-bad');
     elem.pitMessageDisplay.textContent = '接続が切れました。再接続してください。';
     elem.pitMessageDisplay.style.color = '#ff4d4d'; 
-    updateButtonStatus(false);
+    // ボタンの状態もリセット
+    elem.connectDataButton.textContent = '1. データ受信サービスに接続';
+    elem.connectDataButton.classList.remove('ble-connected');
+    elem.connectDataButton.classList.add('ble-disconnected');
 }
 
 function onStatusDeviceDisconnected(event) {
     console.warn('ステータスBLEデバイスが切断されました:', event.target.name);
     updateStatusDisplay(elem.sendStatusDisplay, '送信結果接続: 切断されました。', 'status-bad');
-    updateButtonStatus(false);
+    // ボタンの状態もリセット
+    elem.connectStatusButton.textContent = '2. 送信結果サービスに接続';
+    elem.connectStatusButton.classList.remove('ble-connected');
+    elem.connectStatusButton.classList.add('ble-disconnected');
 }
 
 
 // ----------------------------------------------------
-// 4. ユーティリティと初期化 (省略 - 変更なし)
+// 4. ユーティリティと初期化
 // ----------------------------------------------------
 
 function updateStatusDisplay(element, text, className = 'status-text') {
@@ -308,18 +299,8 @@ function updateStatusDisplay(element, text, className = 'status-text') {
     }
 }
 
-function updateButtonStatus(isConnected) {
-    if (isConnected) {
-        elem.bleConnectButton.textContent = 'BLE 接続済み';
-        elem.bleConnectButton.classList.remove('ble-disconnected');
-        elem.bleConnectButton.classList.add('ble-connected');
-    } else {
-        elem.bleConnectButton.textContent = '全BLEサービスに接続';
-        elem.bleConnectButton.classList.remove('ble-connected');
-        elem.bleConnectButton.classList.add('ble-disconnected');
-    }
-}
-
+// 🚨 修正: connectDataButtonとconnectStatusButtonの2つになったため、この関数は使用しないか、修正が必要です。
+// 今回はボタン個別の更新ロジックを各接続関数に直接記述しました。
 
 window.addEventListener('load', () => {
     // Service Workerの登録（PWAとして動作させる場合）
@@ -336,11 +317,13 @@ window.addEventListener('load', () => {
     // DOM要素の取得
     elem.dataStatusDisplay = document.getElementById('data-status-display');
     elem.sendStatusDisplay = document.getElementById('send-status-display');
-    elem.bleConnectButton = document.getElementById('bleConnectButton');
+    elem.connectDataButton = document.getElementById('connectDataButton'); // 🚨 修正
+    elem.connectStatusButton = document.getElementById('connectStatusButton'); // 🚨 修正
     elem.pitMessageDisplay = document.getElementById('pitMessageDisplay');
 
     // イベントリスナーの設定
-    if (elem.bleConnectButton) elem.bleConnectButton.addEventListener('click', connectAllServices);
+    if (elem.connectDataButton) elem.connectDataButton.addEventListener('click', connectToDataService); // 🚨 修正
+    if (elem.connectStatusButton) elem.connectStatusButton.addEventListener('click', connectToStatusService); // 🚨 修正
     
     // 初期表示メッセージの文字色を黄色に固定
     if (elem.pitMessageDisplay) elem.pitMessageDisplay.style.color = '#ffeb3b';
