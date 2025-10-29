@@ -6,7 +6,7 @@
     <title>KLAP_messenger (WiFi-BLE)</title>
     <link rel="manifest" href="/manifest.json">
     <style>
-        /* 画面全体の設定 (スタイルシートは省略せずに含めます) */
+        /* スタイルシートは省略 */
         html, body {
             height: 100%;
             margin: 0;
@@ -26,7 +26,6 @@
             position: relative;
         }
 
-        /* 画面中央に配置するメッセージのコンテナ */
         #content-wrapper {
             display: flex;
             flex-direction: column;
@@ -34,13 +33,10 @@
             justify-content: center;
             flex-grow: 1;
             width: 100%;
-            padding: 10px 0;
-            box-sizing: border-box;
-            /* デバッグオーバーレイの下に配置 */
             padding-top: 50px; 
+            box-sizing: border-box;
         }
         
-        /* ピットメッセージの表示 */
         #pitMessageDisplay {
             width: 95%;
             font-size: 15vh;
@@ -62,7 +58,6 @@
             flex-shrink: 0;
         }
 
-        /* ボタン行（画面下段に固定） */
         #buttons-row {
             display: flex;
             justify-content: center;
@@ -94,7 +89,6 @@
         .ble-disconnected { background-color: #ff4d4d !important; border-color: #993333;}
         .ble-connected { background-color: #007aff !important; border-color: #0066cc;}
 
-        /* デバッグオーバーレイ（上部に固定） */
         #debug-overlay {
             position: absolute;
             top: 0;
@@ -113,7 +107,6 @@
         .status-good { color: #00ff00; } 
         .status-bad { color: #ff4d4d; }
 
-        /* フォントサイズ調整 (特に縦向きや非常に小さな画面用) */
         @media (max-height: 400px) and (orientation: landscape) {
             #pitMessageDisplay {
                 font-size: 12vh;
@@ -172,15 +165,12 @@ const elem = {
 /**
  * [メイン接続] 全てのBLEサービスへの接続を、順番に開始 (async/awaitで制御)
  */
-async function connectAllServices() { // 🚨 修正: asyncを追加
+async function connectAllServices() { 
     elem.bleConnectButton.textContent = '接続中...';
     
     try {
-        // 1. データ受信サービス (ESP32-C3) への接続を完了させる
-        await connectToDataService(); // 🚨 修正: awaitで完了を待つ
-        
-        // 2. データ接続が成功したら、ステータス通知サービス (ESP32送信機) への接続を開始
-        await connectToStatusService(); // 🚨 修正: awaitで完了を待つ
+        await connectToDataService(); 
+        await connectToStatusService(); 
         
         elem.bleConnectButton.textContent = 'BLE 接続済み'; 
 
@@ -200,9 +190,9 @@ async function connectAllServices() { // 🚨 修正: asyncを追加
  */
 async function connectToDataService() {
     try {
-        // 🚨 フィルタリングを完全に解除 (最弱フィルタ)
+        // 🚨 修正: サービスUUIDのみでフィルタリング
         const device = await navigator.bluetooth.requestDevice({
-            acceptAllDevices: true, // すべてのデバイスを表示
+            filters: [{ services: [DATA_SERVICE_UUID] }],
             optionalServices: [DATA_SERVICE_UUID]
         });
         
@@ -230,9 +220,9 @@ async function connectToDataService() {
  */
 async function connectToStatusService() {
     try {
-        // 🚨 フィルタリングを完全に解除 (最弱フィルタ)
+        // 🚨 修正: サービスUUIDのみでフィルタリング
         const device = await navigator.bluetooth.requestDevice({
-            acceptAllDevices: true, // すべてのデバイスを表示
+            filters: [{ services: [STATUS_SERVICE_UUID] }],
             optionalServices: [STATUS_SERVICE_UUID]
         });
 
@@ -256,7 +246,7 @@ async function connectToStatusService() {
 }
 
 // ----------------------------------------------------
-// 3. データ処理とイベントハンドラ
+// 3. データ処理とイベントハンドラ (省略 - 変更なし)
 // ----------------------------------------------------
 
 function handleDataUpdate(event) {
@@ -308,7 +298,7 @@ function onStatusDeviceDisconnected(event) {
 
 
 // ----------------------------------------------------
-// 4. ユーティリティと初期化
+// 4. ユーティリティと初期化 (省略 - 変更なし)
 // ----------------------------------------------------
 
 function updateStatusDisplay(element, text, className = 'status-text') {
