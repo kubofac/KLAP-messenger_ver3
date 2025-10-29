@@ -170,14 +170,31 @@ const elem = {
 // ----------------------------------------------------
 
 /**
- * [メイン接続] 全てのBLEサービスへの接続を開始
+ * [メイン接続] 全てのBLEサービスへの接続を、順番に開始 (async/awaitで制御)
  */
-function connectAllServices() {
+// 🚨 修正: asyncを追加し、awaitで接続を順番に実行する
+async function connectAllServices() { 
     elem.bleConnectButton.textContent = '接続中...';
-    // データ受信サービス (ESP32-C3) への接続
-    connectToDataService();
-    // ステータス通知サービス (ESP32送信機) への接続
-    connectToStatusService();
+    
+    try {
+        // 1. データ受信サービス (ESP32-C3) への接続を完了させる
+        await connectToDataService(); 
+        
+        // 2. データ接続が成功したら、ステータス通知サービス (ESP32送信機) への接続を開始
+        await connectToStatusService(); 
+        
+        elem.bleConnectButton.textContent = 'BLE 接続済み'; 
+
+    } catch (e) {
+        console.error("Critical Connection Error in connectAllServices:", e);
+        // User cancelled the requestDevice() chooser. の場合はエラーメッセージが適切でないため上書き
+        if (e.message.includes('User cancelled')) {
+             updateStatusDisplay(elem.dataStatusDisplay, '接続をキャンセルしました。', 'status-bad');
+        } else {
+             elem.bleConnectButton.textContent = '接続エラーが発生';
+        }
+        updateButtonStatus(false);
+    }
 }
 
 /**
@@ -185,7 +202,7 @@ function connectAllServices() {
  */
 async function connectToDataService() {
     try {
-        // 🚨 最終修正: フィルタリングを完全に解除 (最弱フィルタ)
+        // 🚨 フィルタリングを完全に解除 (最弱フィルタ)
         const device = await navigator.bluetooth.requestDevice({
             acceptAllDevices: true, // すべてのデバイスを表示
             optionalServices: [DATA_SERVICE_UUID]
@@ -206,8 +223,8 @@ async function connectToDataService() {
 
     } catch (error) {
         console.error('BLE Data Connection Error:', error);
-        updateStatusDisplay(elem.dataStatusDisplay, `データ接続エラー: ${error.message}`, 'status-bad');
-        updateButtonStatus(false);
+        // エラーが発生したら、後続の接続を中断させるため、例外を再スロー
+        throw error; 
     }
 }
 
@@ -216,7 +233,7 @@ async function connectToDataService() {
  */
 async function connectToStatusService() {
     try {
-        // 🚨 最終修正: フィルタリングを完全に解除 (最弱フィルタ)
+        // 🚨 フィルタリングを完全に解除 (最弱フィルタ)
         const device = await navigator.bluetooth.requestDevice({
             acceptAllDevices: true, // すべてのデバイスを表示
             optionalServices: [STATUS_SERVICE_UUID]
@@ -237,8 +254,8 @@ async function connectToStatusService() {
 
     } catch (error) {
         console.error('BLE Status Connection Error:', error);
-        updateStatusDisplay(elem.sendStatusDisplay, `送信結果接続エラー: ${error.message}`, 'status-bad');
-        updateButtonStatus(false);
+        // エラーが発生したら、例外を再スロー
+        throw error;
     }
 }
 
@@ -326,7 +343,6 @@ function updateStatusDisplay(element, text, className = 'status-text') {
  */
 function updateButtonStatus(isConnected) {
     // どちらかのサービスが接続されていれば、ボタンの表示は一旦CONNECTEDとする
-    // 厳密には両方接続されたらCONNECTEDとすべきだが、ここでは接続試行の結果に依存
     if (isConnected) {
         elem.bleConnectButton.textContent = 'BLE 接続済み';
         elem.bleConnectButton.classList.remove('ble-disconnected');
