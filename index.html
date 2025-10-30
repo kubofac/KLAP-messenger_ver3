@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>KLAP Messenger 受信機</title>
+    <!-- Tailwind CSS CDN を使用 -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         /* Interフォントを適用 */
@@ -39,7 +40,8 @@
             word-wrap: break-word; /* 長い単語の折り返し */
         }
         #received-message {
-            font-size: 10vw; /* 画面サイズに合わせた巨大なフォントサイズ */
+            /* 画面サイズに合わせた巨大なフォントサイズ (レスポンシブ) */
+            font-size: clamp(3rem, 10vw, 8rem); 
             font-weight: 700;
             color: #FFD700; /* メッセージを黄色 (Gold) に */
             line-height: 1.1;
@@ -99,8 +101,13 @@
 
     <script>
         // BLE 定数
-        const RECEIVER_DEVICE_NAME = 'ESP32_Receiver_A_Data';
-        const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+        // [重要] デバイス名は、ESP32-C3（受信機）側のC++コードのDEVICE_NAMEと一致させてください。
+        const RECEIVER_DEVICE_NAME = 'ESP32_Receiver_A_Data'; 
+
+        // [修正済み] サービスUUIDをC++コード（5faf...）と統一
+        const SERVICE_UUID = '5fafc201-1fb5-459e-8fcc-c5c9c331914b';
+
+        // [確認] データ特性UUIDもESP32-C3側のコードと一致させてください。
         const DATA_CHAR_UUID = 'beb5483e-36e1-45f1-b40b-361734a96b3a';
         
         // UI 要素
@@ -115,13 +122,20 @@
         // ----------------------------------------------------
 
         async function connectBLE() {
+            if (bleDevice && bleDevice.gatt && bleDevice.gatt.connected) {
+                // 既に接続済みの場合、切断処理を実行
+                bleDevice.gatt.disconnect();
+                return;
+            }
+
             try {
-                receivedMessageDiv.textContent = '接続中...';
+                receivedMessageDiv.textContent = 'スキャン中...';
                 connectButton.disabled = true;
-                connectButton.textContent = '接続中...';
+                connectButton.textContent = 'スキャン中...';
 
                 // 1. デバイススキャン
                 const options = {
+                    // デバイス名をフィルタに使用
                     filters: [{ name: RECEIVER_DEVICE_NAME }],
                     optionalServices: [SERVICE_UUID]
                 };
@@ -131,7 +145,7 @@
 
                 // 2. GATT サーバー接続
                 const server = await bleDevice.gatt.connect();
-                receivedMessageDiv.textContent = 'サービス検索中...';
+                receivedMessageDiv.textContent = '接続確立。サービス検索中...';
 
                 // 3. サービス取得
                 const service = await server.getPrimaryService(SERVICE_UUID);
@@ -145,14 +159,24 @@
                 dataCharacteristic.addEventListener('characteristicvaluechanged', handleNotifications);
                 
                 receivedMessageDiv.textContent = '接続成功。メッセージ待機中...';
-                connectButton.textContent = '接続済み';
+                connectButton.textContent = '切断';
+                connectButton.disabled = false;
 
             } catch (error) {
                 console.error('BLE接続エラー:', error);
-                receivedMessageDiv.textContent = '接続失敗。エラー: ' + error.name;
+                
+                let errorMessage;
+                if (error.name === 'NotFoundError') {
+                    errorMessage = `デバイス「${RECEIVER_DEVICE_NAME}」が見つかりません。電源やUUIDを確認してください。`;
+                } else {
+                    errorMessage = `接続失敗: ${error.name}`;
+                }
+
+                receivedMessageDiv.textContent = errorMessage;
                 connectButton.disabled = false;
                 connectButton.textContent = '再接続';
-                // 接続失敗時はデバイスをリセット
+                
+                dataCharacteristic = null;
                 bleDevice = null;
             }
         }
@@ -196,7 +220,7 @@
         
         // ページロード時の初期メッセージ
         window.onload = () => {
-             console.log("Receiver App Ready.");
+            console.log("Receiver App Ready. Check UUIDs and Device Name.");
         };
 
     </script>
