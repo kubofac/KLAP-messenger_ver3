@@ -1,228 +1,231 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KLAP Messenger 受信機</title>
-    <!-- Tailwind CSS CDN を使用 -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        /* Interフォントを適用 */
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
-        body {
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KLAP Messenger 受信機</title>
+    <!-- Tailwind CSS CDN を使用 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Interフォントを適用 */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&display=swap');
+        
+        /* === CSS競合対策: HTMLとBODYの高さを強制的に確保 === */
+        html, body {
+            /* 高さを確実にビューポート全体に設定し、外部CSSの影響を排除 */
+            height: 100vh !important; 
+            margin: 0 !important;
+            padding: 0 !important;
             font-family: 'Inter', sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #000000; /* 全体背景を黒に */
-            height: 100vh;
-            width: 100vw;
-            overflow: hidden; /* スクロール防止 */
         }
-        /* メインコンテンツを画面中央に配置し、柔軟に対応 */
-        #content-wrapper {
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            width: 100%;
-            height: 100%;
-            padding: 20px;
-            box-sizing: border-box;
+
+        /* カスタムCSSは最小限にし、Tailwindクラスを優先 */
+        
+        /* メッセージ表示エリア (中央) のフォントサイズをレスポンシブに調整 */
+        #received-message {
+            /* 画面サイズに合わせた巨大なフォントサイズ (レスポンシブ) */
+            font-size: clamp(3rem, 10vw, 8rem); 
+            line-height: 1.1;
+            word-wrap: break-word; 
+        }
+
+        /* スキャン中/エラー時のアニメーション */
+        .dot-pulse {
+            animation: dot-flicker 1.5s infinite;
         }
-        /* メッセージ表示エリア (中央) */
-        #message-display {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            flex-grow: 1; /* 中央エリアを最大限に拡大 */
-            width: 100%;
-            text-align: center;
-            word-wrap: break-word; /* 長い単語の折り返し */
+        @keyframes dot-flicker {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 1; }
         }
-        #received-message {
-            /* 画面サイズに合わせた巨大なフォントサイズ (レスポンシブ) */
-            font-size: clamp(3rem, 10vw, 8rem); 
-            font-weight: 700;
-            color: #FFD700; /* メッセージを黄色 (Gold) に */
-            line-height: 1.1;
-            max-height: 80vh;
-            overflow: hidden;
-            padding: 10px;
-        }
-        /* ボタンコンテナ (下部) */
-        #control-panel {
-            width: 100%;
-            padding: 20px 0 30px 0;
-            display: flex;
-            justify-content: center;
-        }
-        .btn-connect {
-            padding: 1rem 2rem;
-            font-size: 1.25rem;
-            font-weight: bold;
-            color: white;
-            background-color: #4f46e5; /* Indigo */
-            border: none;
-            border-radius: 0.5rem;
-            cursor: pointer;
-            transition: background-color 0.3s ease, transform 0.1s ease;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-        .btn-connect:hover {
-            background-color: #4338ca;
-        }
-        .btn-connect:active {
-            transform: translateY(1px);
-        }
-        .btn-connect:disabled {
-            background-color: #6366f1;
-            cursor: not-allowed;
-            opacity: 0.7;
-        }
-    </style>
+    </style>
 </head>
-<body>
+<!-- Tailwindクラスにほとんどのレイアウトを移行 -->
+<body class="bg-gray-900 h-screen w-screen overflow-hidden text-gray-200">
 
-    <div id="content-wrapper">
-        <!-- メッセージ表示エリア -->
-        <div id="message-display">
-            <div id="received-message">
-                接続待機中...
-            </div>
+    <!-- メインコンテナ: 画面全体を占有 (h-screen, w-screen) し、Flexboxで要素を配置 -->
+    <div id="content-wrapper" class="flex flex-col h-full w-full justify-between items-center p-5 pb-24">
+        
+        <!-- ステータスインジケーター (上部) -->
+        <div id="status-indicator" class="w-full text-center text-sm text-gray-400">
+            <span id="ble-status">切断状態</span>
         </div>
 
-        <!-- 制御パネル -->
-        <div id="control-panel">
-            <button id="connect-button" class="btn-connect">
-                BLE接続
-            </button>
-        </div>
-    </div>
+        <!-- メッセージ表示エリア (中央で大きく表示) -->
+        <div id="message-display" class="flex flex-grow w-full justify-center items-center text-center overflow-y-auto">
+            <div id="received-message" class="font-extrabold text-amber-300 max-w-full">
+                接続待機中...
+            </div>
+        </div>
 
-    <script>
-        // BLE 定数
-        // [重要] デバイス名は、ESP32-C3（受信機）側のC++コードのDEVICE_NAMEと一致させてください。
-        const RECEIVER_DEVICE_NAME = 'ESP32_Receiver_A_Data'; 
+    </div>
+    
+    <!-- 制御パネル (ボタン - 画面下部に固定) -->
+    <div id="control-panel" class="fixed bottom-0 left-0 w-full p-4 bg-gray-900 border-t border-gray-700 flex justify-center shadow-lg">
+        <button id="connect-button" 
+            class="w-full max-w-md p-4 text-xl font-bold text-white rounded-xl cursor-pointer transition duration-300 transform 
+                   bg-blue-600 hover:bg-blue-700 active:scale-98 shadow-xl">
+            BLE接続を開始
+        </button>
+    </div>
 
-        // [修正済み] サービスUUIDをC++コード（5faf...）と統一
-        const SERVICE_UUID = '5fafc201-1fb5-459e-8fcc-c5c9c331914b';
+    <script>
+        // BLE 定数
+        // デバイス名は「KLAP_Receiver_A_Data」に統一されています。
+        const RECEIVER_DEVICE_NAME = 'KLAP_Receiver_A_Data'; 
 
-        // [確認] データ特性UUIDもESP32-C3側のコードと一致させてください。
-        const DATA_CHAR_UUID = 'beb5483e-36e1-45f1-b40b-361734a96b3a';
-        
-        // UI 要素
-        const connectButton = document.getElementById('connect-button');
-        const receivedMessageDiv = document.getElementById('received-message');
+        const SERVICE_UUID = '5fafc201-1fb5-459e-8fcc-c5c9c331914b';
+        const DATA_CHAR_UUID = 'beb5483e-36e1-45f1-b40b-361734a96b3a';
+        
+        // UI 要素
+        const connectButton = document.getElementById('connect-button');
+        const receivedMessageDiv = document.getElementById('received-message');
+        const statusIndicator = document.getElementById('ble-status');
 
-        let bleDevice;
-        let dataCharacteristic;
+        let bleDevice;
+        let dataCharacteristic;
 
-        // ----------------------------------------------------
-        // BLE 接続処理
-        // ----------------------------------------------------
+        // UI の状態を更新するヘルパー関数
+        function updateUI(message, statusText, isConnecting = false) {
+            receivedMessageDiv.textContent = message;
+            statusIndicator.textContent = statusText;
+            connectButton.disabled = isConnecting;
 
-        async function connectBLE() {
-            if (bleDevice && bleDevice.gatt && bleDevice.gatt.connected) {
-                // 既に接続済みの場合、切断処理を実行
-                bleDevice.gatt.disconnect();
-                return;
+            // ボタンの色の切り替え (Tailwindクラスを操作)
+            const baseClasses = 'w-full max-w-md p-4 text-xl font-bold text-white rounded-xl cursor-pointer transition duration-300 transform shadow-xl';
+            let dynamicClasses = '';
+
+            if (isConnecting) {
+                dynamicClasses = 'bg-blue-400 cursor-wait';
+            } else if (bleDevice?.gatt?.connected) {
+                // 接続中の色 (切断ボタンとして機能)
+                dynamicClasses = 'bg-red-600 hover:bg-red-700 active:scale-98';
+                connectButton.textContent = 'BLE切断';
+            } else {
+                // 切断中の色 (接続ボタンとして機能)
+                dynamicClasses = 'bg-blue-600 hover:bg-blue-700 active:scale-98';
+                connectButton.textContent = 'BLE接続を開始';
             }
+            
+            connectButton.className = `${baseClasses} ${dynamicClasses}`;
 
-            try {
-                receivedMessageDiv.textContent = 'スキャン中...';
-                connectButton.disabled = true;
-                connectButton.textContent = 'スキャン中...';
+            // ステータスアニメーションの制御
+            statusIndicator.classList.toggle('dot-pulse', isConnecting);
+        }
 
-                // 1. デバイススキャン
-                const options = {
-                    // デバイス名をフィルタに使用
-                    filters: [{ name: RECEIVER_DEVICE_NAME }],
-                    optionalServices: [SERVICE_UUID]
-                };
-                
-                bleDevice = await navigator.bluetooth.requestDevice(options);
-                bleDevice.addEventListener('gattserverdisconnected', onDeviceDisconnected);
+        // ----------------------------------------------------
+        // BLE 接続処理
+        // ----------------------------------------------------
 
-                // 2. GATT サーバー接続
-                const server = await bleDevice.gatt.connect();
-                receivedMessageDiv.textContent = '接続確立。サービス検索中...';
+        async function connectBLE() {
+            if (bleDevice && bleDevice.gatt && bleDevice.gatt.connected) {
+                // 既に接続済みの場合、切断処理を実行
+                console.log('Disconnecting from device...');
+                bleDevice.gatt.disconnect();
+                return;
+            }
 
-                // 3. サービス取得
-                const service = await server.getPrimaryService(SERVICE_UUID);
-                receivedMessageDiv.textContent = '特性取得中...';
+            try {
+                // UIの更新 (スキャン開始)
+                updateUI('スキャン中...', 'スキャン中...', true);
 
-                // 4. 特性取得 (Notify 特性)
-                dataCharacteristic = await service.getCharacteristic(DATA_CHAR_UUID);
-                
-                // 5. Notifyの開始
-                await dataCharacteristic.startNotifications();
-                dataCharacteristic.addEventListener('characteristicvaluechanged', handleNotifications);
-                
-                receivedMessageDiv.textContent = '接続成功。メッセージ待機中...';
-                connectButton.textContent = '切断';
-                connectButton.disabled = false;
+                // 1. デバイススキャン
+                const options = {
+                    // デバイス名をフィルタに使用
+                    filters: [{ name: RECEIVER_DEVICE_NAME }],
+                    optionalServices: [SERVICE_UUID]
+                };
+                
+                console.log('Requesting device...');
+                bleDevice = await navigator.bluetooth.requestDevice(options);
+                bleDevice.addEventListener('gattserverdisconnected', onDeviceDisconnected);
 
-            } catch (error) {
-                console.error('BLE接続エラー:', error);
-                
-                let errorMessage;
-                if (error.name === 'NotFoundError') {
-                    errorMessage = `デバイス「${RECEIVER_DEVICE_NAME}」が見つかりません。電源やUUIDを確認してください。`;
-                } else {
-                    errorMessage = `接続失敗: ${error.name}`;
+                // 2. GATT サーバー接続
+                updateUI('接続中...', '接続試行中...', true);
+                const server = await bleDevice.gatt.connect();
+
+                // 3. サービス取得
+                updateUI('サービス検索中...', 'サービス検索中...', true);
+                const service = await server.getPrimaryService(SERVICE_UUID);
+
+                // 4. 特性取得 (Notify 特性)
+                updateUI('特性取得中...', '特性取得中...', true);
+                dataCharacteristic = await service.getCharacteristic(DATA_CHAR_UUID);
+                
+                // 5. Notifyの開始
+                updateUI('通知設定中...', '通知設定中...', true);
+                await dataCharacteristic.startNotifications();
+                dataCharacteristic.addEventListener('characteristicvaluechanged', handleNotifications);
+                
+                // UIの更新 (接続成功)
+                updateUI('受信待機中', '接続完了 (受信中)', false);
+
+            } catch (error) {
+                console.error('BLE接続エラー:', error);
+                
+                let errorMessage;
+                if (error.name === 'NotFoundError') {
+                    errorMessage = 'デバイスが見つかりません。ESP32の起動/$\text{UUID}$ を確認してください。';
+                } else if (error.name === 'NotAllowedError') {
+                    errorMessage = '$\text{BLE}$ 権限が拒否されました。設定を確認してください。';
+                } else if (error.name === 'NetworkError') {
+                    errorMessage = '接続がタイムアウトしました。デバイスがスキャン範囲内にありますか？';
                 }
+                else {
+                    errorMessage = `接続失敗: ${error.name}`;
+                }
 
-                receivedMessageDiv.textContent = errorMessage;
-                connectButton.disabled = false;
-                connectButton.textContent = '再接続';
-                
-                dataCharacteristic = null;
-                bleDevice = null;
-            }
-        }
+                // UIの更新 (接続失敗)
+                updateUI(errorMessage, 'エラー', false);
+                
+                dataCharacteristic = null;
+                bleDevice = null;
+            }
+        }
 
-        // ----------------------------------------------------
-        // 通知ハンドラ
-        // ----------------------------------------------------
+        // ----------------------------------------------------
+        // 通知ハンドラ
+        // ----------------------------------------------------
 
-        function handleNotifications(event) {
-            const value = event.target.value;
-            // DataViewからUTF-8文字列としてデコード
-            const receivedText = new TextDecoder('utf-8').decode(value);
-            
-            console.log('Received:', receivedText);
-            
-            // 画面にメッセージを表示
-            receivedMessageDiv.textContent = receivedText;
-        }
+        function handleNotifications(event) {
+            const value = event.target.value;
+            // DataViewからUTF-8文字列としてデコード
+            const receivedText = new TextDecoder('utf-8').decode(value);
+            
+            console.log('Received:', receivedText);
+            
+            // 画面にメッセージを表示
+            receivedMessageDiv.textContent = receivedText;
+            // メッセージ受信後もステータスは「接続完了」を維持
+            statusIndicator.textContent = '接続完了 (受信中)';
+        }
 
-        // ----------------------------------------------------
-        // 切断ハンドラ
-        // ----------------------------------------------------
+        // ----------------------------------------------------
+        // 切断ハンドラ
+        // ----------------------------------------------------
 
-        function onDeviceDisconnected(event) {
-            const device = event.target;
-            console.log('Device disconnected:', device.name);
-            
-            receivedMessageDiv.textContent = '切断されました。再接続してください。';
-            connectButton.textContent = '再接続';
-            connectButton.disabled = false;
-            
-            dataCharacteristic = null;
-            bleDevice = null;
-        }
+        function onDeviceDisconnected(event) {
+            const device = event.target;
+            console.log('Device disconnected:', device.name);
+            
+            // UIの更新 (切断)
+            updateUI('接続が切断されました。', '切断状態', false);
+            
+            dataCharacteristic = null;
+            bleDevice = null;
+        }
 
-        // ----------------------------------------------------
-        // イベントリスナー
-        // ----------------------------------------------------
+        // ----------------------------------------------------
+        // イベントリスナー
+        // ----------------------------------------------------
 
-        connectButton.addEventListener('click', connectBLE);
-        
-        // ページロード時の初期メッセージ
-        window.onload = () => {
-            console.log("Receiver App Ready. Check UUIDs and Device Name.");
-        };
+        connectButton.addEventListener('click', connectBLE);
+        
+        // ページロード時の初期メッセージ
+        window.onload = () => {
+            updateUI('接続待機中...', '切断状態', false);
+            console.log("Receiver App Ready. Check UUIDs and Device Name.");
+        };
 
-    </script>
+    </script>
 </body>
 </html>
