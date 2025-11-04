@@ -5,6 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <!-- PWAマニフェストファイルの参照 -->
     <link rel="manifest" href="manifest.json">
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/service-worker.js')
+      .then(registration => {
+        console.log('Service Worker registered! Scope:', registration.scope);
+      })
+      .catch(err => {
+        console.log('Service Worker registration failed:', err);
+      });
+  });
+}
+</script>
+
+
+    
     <title>klap-messenger</title>
     <style>
         /* CSSはサインボードの要件を維持（背景黒、文字白、巨大フォント） */
@@ -178,3 +194,4 @@
 
 </body>
 </html>
+
