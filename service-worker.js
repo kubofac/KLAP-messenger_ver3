@@ -1,14 +1,11 @@
-const CACHE_NAME = 'KLAP_messenger_ver3';
+const CACHE_NAME = 'klap_messenger_ver3';
 const urlsToCache = [
   '/',
   '/index.html',
-    '/manifest.json',
+   '/manifest.json',
   '/service-worker.js',
-  '/icon192.png',
-  '/icon512.png',
-  // 画像やJavaScriptファイルなど、アプリを構成するすべての静的ファイルをここに追加
-  
-  
+  '/icon-192.png',
+  '/icon-512.png',, 
   // その他のCSSやJSファイルなど
 ];
 
@@ -18,8 +15,11 @@ self.addEventListener('install', (event) => {
     caches.open(CACHE_NAME)
       .then((cache) => {
         console.log('Opened cache');
+        // ★ 注意: cache.addAll()は一つでも失敗すると全体が失敗します。
         return cache.addAll(urlsToCache);
       })
+      // ★ 追加: 待機フェーズをスキップし、すぐにアクティベートイベントを発生させる
+      .then(() => self.skipWaiting())
   );
 });
 
@@ -32,7 +32,10 @@ self.addEventListener('fetch', (event) => {
         if (response) {
           return response;
         }
+        
         // なければネットワークから取得する
+        // ★ ここでネットワーク接続が失敗した場合、アプリはエラーになります。
+        // ★ より高度なオフライン対応のためには、フォールバックページを用意することも検討してください。
         return fetch(event.request);
       })
   );
@@ -46,10 +49,13 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
           if (cacheWhitelist.indexOf(cacheName) === -1) {
+            // リストにない古いキャッシュを削除
             return caches.delete(cacheName);
           }
         })
       );
     })
+    // ★ 追加: アクティベート後、すぐに開いているページを制御する
+    .then(() => self.clients.claim()) 
   );
 });
