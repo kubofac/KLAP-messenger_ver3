@@ -21,7 +21,7 @@
             overflow: hidden;
             text-align: center;
         }
-        
+         
         .message-container { 
             width: 90vw; /* 画面幅の90%を使用 */
             height: 90vh; /* 画面高さの90%を使用 */
@@ -42,12 +42,12 @@
             line-height: 1.1;
             transition: color 0.3s ease;
         }
-        
+         
         /* 更新時のフィードバック */
         .updated { 
             color: #79f291 !important; /* 明るい緑色に点滅 */
         } 
-        
+         
         /* 接続状態のインジケータ */
         #status {
             position: fixed;
@@ -60,12 +60,24 @@
 </head>
 <body>
 <div class="message-container" id="msg-box">
-    <!-- メッセージ本体 -->
     <div id="message-display">接続中...</div>
     <div id="status">ステータス: 未接続</div>
 </div>
 
 <script>
+    // 💡 【PWAのオフライン対応のためService Workerを登録する】 💡
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js')
+          .then(registration => {
+            console.log('Service Worker registered: ', registration);
+          })
+          .catch(error => {
+            console.log('Service Worker registration failed: ', error);
+          });
+      });
+    }
+
     // --- 【重要】ESP32のIPアドレスを設定してください ---
     // SoftAPのデフォルトIPアドレスは 192.168.4.1 です。
     const ESP32_IP = "192.168.4.1";
@@ -76,6 +88,7 @@
     const messageDisplay = document.getElementById('message-display');
     const msgBox = document.getElementById('msg-box');
     const statusDisplay = document.getElementById('status');
+    const LOCAL_STORAGE_KEY = 'last_klap_message'; // ★ローカルストレージキーを追加
 
     // フォントサイズを動的に調整する関数
     function adjustFontSize() {
@@ -95,7 +108,7 @@
         messageDisplay.style.fontSize = fontSize + 'px';
     }
 
-    // 最新メッセージを取得する関数
+    // 最新メッセージを取得する関数 (★ オフライン対応のため修正)
     function fetchMessage() {
         statusDisplay.textContent = 'ステータス: ポーリング中...';
         
@@ -113,6 +126,9 @@
                     messageDisplay.textContent = data;
                     lastMessage = data;
                     
+                    // 正常に取得できたらローカルストレージに保存
+                    localStorage.setItem(LOCAL_STORAGE_KEY, data); 
+
                     adjustFontSize();
                     
                     // 更新フィードバック
@@ -124,9 +140,23 @@
             })
             .catch(error => {
                 console.error('メッセージ取得エラー:', error);
-                statusDisplay.textContent = 'ステータス: ❌ 接続エラー (IP確認)';
-                messageDisplay.textContent = '❌ エラーが発生しました。IPアドレスを確認してください。';
-                adjustFontSize();
+                
+                // ネットワークエラー発生時、前回保存したメッセージを読み込む
+                const savedMessage = localStorage.getItem(LOCAL_STORAGE_KEY);
+                if (savedMessage) {
+                    // 前回メッセージがあれば、それを表示し、オフライン状態であることを通知
+                    statusDisplay.textContent = 'ステータス: ⚠️ オフライン';
+                    if (messageDisplay.textContent !== savedMessage) {
+                        messageDisplay.textContent = savedMessage;
+                        lastMessage = savedMessage; 
+                        adjustFontSize();
+                    }
+                } else {
+                    // 前回メッセージもなければ、エラーメッセージを表示
+                    statusDisplay.textContent = 'ステータス: ❌ 接続エラー';
+                    messageDisplay.textContent = '❌ エラーが発生しました。IPアドレスを確認してください。';
+                    adjustFontSize();
+                }
             });
     }
 
@@ -136,6 +166,15 @@
         document.documentElement.style.height = '100%';
         document.body.style.height = '100%';
         
+        // ローカルストレージから前回メッセージを読み込み、初期表示
+        const savedMessage = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (savedMessage) {
+            messageDisplay.textContent = savedMessage;
+            lastMessage = savedMessage;
+            adjustFontSize();
+            statusDisplay.textContent = 'ステータス: ⏳ (前回データ)';
+        }
+
         fetchMessage(); // ページロード時に即座に取得
         
         // 1秒ごとにポーリング
